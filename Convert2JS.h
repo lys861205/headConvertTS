@@ -48,7 +48,7 @@ private:
 	int parseClass(string& str,stringstream& rOutStream);
 	int parseEnum(string& str,stringstream& rOutStream);
 	int parseInclude(string& str, stringstream& rOutStream);
-        int writeClassToJSFile(const string& className, vector<vardef>& rVarVec,stringstream& rOutStream, bool isHerit, string& parentString);
+	int writeClassToJSFile(const string& className, vector<vardef>& rVarVec,stringstream& rOutStream, bool isHerit, string& parentString);
 	int getTypeValue(string& sType);
 	string getJSFun(int vMacro);
 	string getJsType(int vMacro);
@@ -64,6 +64,7 @@ private:
 	vector<pair<string, int> > m_keyMap;
 	vector<pair<int, string> > m_funMap;	
 	set<string> mKeySet;
+	set<string> mImportClass;
 	map<string, int> mTypeSizeMap;
 	map<string, pair<string,string> > mTypeFuncMap;
 	map<string, string> mTypeMap;

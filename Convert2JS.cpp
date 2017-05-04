@@ -10,6 +10,8 @@
 #include <string>
 #include "encoding.h"
 
+static int enumNumber = 0;
+
 #define quotedToken						'#'
 #define comment					        "//"
 #define commentbegin				    "/*"
@@ -28,27 +30,31 @@
 #define struct_define	"struct"
 #define enum_define		"enum"
 
+#define IMPORT_INC_SOCK "import { SocketHelper } from './SocketHelper'\n"
+
 
 #define INTERFACE_BEGIG(ss, iclass) ss << "export interface " << iclass << "{ " << endl;
 
-#define CLASS_BEGIN(ss, _class, iclass, _pclass) ss << "export class " << _class << " implements IBufferable, " << iclass; \
-												 if ( _pclass.empty() ) \
+#define CLASS_BEGIN(ss, _class, iclass, _pclass) ss << "export class " << _class; \
+												 if ( !_pclass.empty() ) \
 												 {\
-													ss << "{" << endl;\
+													ss << " extends " << _pclass;\
 												 }\
-												 else \
-												 {\
-													 ss << " extends " << _pclass << "{" << endl;\
-											     }
+												 ss << " implements " << iclass << "{" << endl;
 
-#define CTOR_BEGIN(ss, _class) ss << TAB << "constructor(obj:" << _class << "){" << endl;
+#define CTOR_BEGIN(ss, _class, super) ss << TAB << "constructor(obj?:" << _class << "){" << endl;\
+									  if ( super )\
+									  {\
+										  ss << _2TAB << "super()" << endl; \
+									  }\
+									  ss << _2TAB << "if (obj){" << endl;
 
 
-#define TO_OBJ_BEGIN(ss, super) ss << TAB << "toObject(buffer: Buffer){\n" ;\
+#define TO_OBJ_BEGIN(ss, super, size) ss << TAB << "toObject(buffer: Buffer){\n" ;\
 							    ss << _2TAB << "let read = new SocketHelper(); \n" ;\
 								if ( super )\
 								{\
-									ss << _2TAB << "super.toObject(read.getBuffer(buffer));\n"; \
+									ss << _2TAB << "super.toObject(read.getBuffer(buffer, " << size << "));\n";\
 								}
 								
 
@@ -69,7 +75,7 @@
 										ss << _2TAB << "this." << name << "= obj." << name << endl;\
 									}
 
-#define CTOR_APPEND(ss, name, type) ss << _2TAB << "this." << name << "= obj." << name << endl;\
+#define CTOR_APPEND(ss, name, type) ss << TAB << _2TAB << "this." << name << "= obj." << name << endl;\
 
 
 #define TO_OBJ_APPEND(ss, name, func, count) if ( count > 1 )\
@@ -77,12 +83,12 @@
 											 else \
 												ss << _2TAB << "this." << name << "=" << "read." << func << "(buffer);"  << endl;
 
-#define TO_OBJ_ARRAY_APPEND(ss, name, type, count) if ( count > 1)\
+#define TO_OBJ_ARRAY_APPEND(ss, name, type, count, size) if ( count > 1)\
 												   {\
 													   ss << _2TAB << "let tmpArray = new Array<" << type << ">();" << endl;\
 													   ss << _2TAB << "for (let i=0; i<" << count << "; i++ ){" << endl;\
 													   ss << _2TAB << TAB << "let item = new " << type << "();" << endl;\
-													   ss << _2TAB << TAB << "item.toObject(read.getBuffer(buffer));" << endl;\
+													   ss << _2TAB << TAB << "item.toObject(read.getBuffer(buffer, " << size << "));" << endl;\
 													   ss << _2TAB << TAB << "tmpArray.push(item)" << endl;\
 													   ss << _2TAB << "}" << endl;\
 													   ss << _2TAB << "this." <<name << "= tmpArray" << endl;\
@@ -90,11 +96,11 @@
 												  else\
 												  {\
 													  ss << _2TAB << "let tmpObj = new " << type << "();" << endl;\
-													  ss << _2TAB << "tmpObj.toObject(read.getBuffer(buffer));" << endl;\
+													  ss << _2TAB << "tmpObj.toObject(read.getBuffer(buffer, " << size << "));" << endl;\
 													  ss << _2TAB << "this." << name << " = " << "tmpObj; " << endl;\
 												  }
 
-#define TO_BUFFER_ALLOC(ss, size,super)  ss << _2TAB << "let buffer=Buffer.allocUnsafe(" << size << ");" << endl;\
+#define TO_BUFFER_ALLOC(ss, size,super)  ss << _2TAB << "let buffer=Buffer.alloc(" << size << ");" << endl;\
 										 ss << _2TAB << "let helper=new SocketHelper();" << endl;\
 										 if ( super )\
 											 ss << _2TAB << "helper.putBuffer(buffer, super.toBuffer());" << endl;
@@ -117,7 +123,8 @@
 
 #define INTERFACE_END(ss) ss <<  "}" << endl;
 
-#define CTOR_END(ss) ss  << TAB << "}" << endl;
+#define CTOR_END(ss) ss  << _2TAB << "}" << endl;\
+					 ss << TAB << "}" << endl;
 
 #define TO_OBJ_END(ss) ss << TAB << "}" << endl;
 
@@ -266,7 +273,7 @@ int Convert::toJSFile(string& file, bool bAppend)
         string tmpStr = mStrPath;
         tmpStr.append("\\");
 	tmpStr.append(outfilename);
-        tmpStr.append(".ts");
+	tmpStr.append(".ts");
 	outfilename = tmpStr;
         cout << "========" << outfilename << endl;
         outStream.open(outfilename.c_str(), ios::in|ios::out|ios::trunc);
@@ -275,7 +282,7 @@ int Convert::toJSFile(string& file, bool bAppend)
 		cout << "open file: " << outfilename << " failed, error: " << errno << endl;
 		return error_file;
 	}
-	
+	outStream.write(IMPORT_INC_SOCK, strlen(IMPORT_INC_SOCK));
 	//read file
 	string contentString;
 	char buf[4096] = {0};
@@ -285,6 +292,10 @@ int Convert::toJSFile(string& file, bool bAppend)
 		string tmpString;
 		tmpString.append(buf);
 		memset(buf, 0x00, 4096);
+		if (tmpString.empty())
+		{
+			continue;
+		}
 #ifdef WIN32
 		tmpString.append(CRLF);
 #endif
@@ -365,8 +376,8 @@ int  Convert::writeClassToJSFile(const string& className, vector<vardef>& rVarVe
 
 	INTERFACE_BEGIG(interfaceStream, IClassName)
 	CLASS_BEGIN(varStream, className, IClassName, parentClass)
-	CTOR_BEGIN(ctor1Stream, IClassName)
-	TO_OBJ_BEGIN(ctor2Stream, isInherit)
+	CTOR_BEGIN(ctor1Stream, IClassName, isInherit)
+	TO_OBJ_BEGIN(ctor2Stream, isInherit, getTypeSize(parentClass))
 	TO_BUFFER_BEGIN(toBufStream)
 
 	int classSize = 0;
@@ -385,11 +396,11 @@ int  Convert::writeClassToJSFile(const string& className, vector<vardef>& rVarVe
 			{
 				string tstring = (*vIt).typeString;
 				tstring = XStrUtil::chop(tstring, "[]");
-				TO_OBJ_ARRAY_APPEND(ctor2Stream, (*vIt).nameString, tstring, (*vIt).count)
+				TO_OBJ_ARRAY_APPEND(ctor2Stream, (*vIt).nameString, tstring, (*vIt).count, getTypeSize(tstring))
 			}
 			else
 			{
-				TO_OBJ_ARRAY_APPEND(ctor2Stream, (*vIt).nameString, (*vIt).typeString, (*vIt).count)
+				TO_OBJ_ARRAY_APPEND(ctor2Stream, (*vIt).nameString, (*vIt).typeString, (*vIt).count, getTypeSize((*vIt).typeString))
 			}
 		}
 		else 
@@ -457,7 +468,13 @@ int Convert::parseEnum(string& str,stringstream& rOutStream)
 	vector<string> vLineItems;
 	XStrUtil::split(str, "\r\n", vLineItems);
 	string enumNameStr = vLineItems[0];
-	enumNameStr = XStrUtil::chop(enumNameStr, " \r\n{");
+	enumNameStr = XStrUtil::chop(enumNameStr, " \t\r\n{");
+	if ((pos = enumNameStr.find_first_of(" \t")) == string::npos)
+	{
+		stringstream ss;
+		ss << " " << "Tenum" << ++enumNumber;
+		enumNameStr.append(ss.str());
+	}
 	rOutStream << "export " << enumNameStr << " { " << endl;
 	for ( int i=1; i<(int)vLineItems.size(); ++i )
 	{
@@ -523,7 +540,6 @@ int Convert::parseClass(string& str,stringstream& rOutStream)
 		if (vClass.size() >= 2)
 		{
 			parentTypeString = XStrUtil::chop(vClass[1], " \t{");
-			cout << "--------------------------- " << parentTypeString << endl;
 		}
 	}
 	vector<string> vClass;
@@ -535,6 +551,7 @@ int Convert::parseClass(string& str,stringstream& rOutStream)
 	className = vClass[1];
 
 	mKeySet.insert(XStrUtil::chop(className, " \t{"));	
+	mImportClass.insert(XStrUtil::chop(className, " \t{"));
 	//解析变量
 	vector<vardef> varDefVec;
 	set<string>::iterator it;
@@ -791,20 +808,27 @@ int Convert::parseInclude(string& str, stringstream& rOutStream)
 		return error_format;
 	}
 
+	string tmpIncStr;
 	string incStr = vItems[1];
-        incStr = XStrUtil::chop(incStr, " \"\r\n");
-        if (toJSFile(incStr, true) != error_ok)
+    incStr = XStrUtil::chop(incStr, " \"\r\n");
+	tmpIncStr = incStr;
+    if (toJSFile(incStr, true) != error_ok)
 	{
 		return error_ok;
 	}
 	
-	size_t pos = incStr.find(".");
+	size_t pos = tmpIncStr.find(".");
 	if ( pos != string::npos )
 	{
-		incStr = incStr.substr(0, pos);
+		tmpIncStr = tmpIncStr.substr(0, pos);
 	}
-	//rOutStream << "import {" << incStr << "} from " << "\"" << incStr << "\";" << endl;
-	
+	set<string>::iterator it = mImportClass.begin();
+	for (; it != mImportClass.end(); ++it)
+	{
+		rOutStream << "import {" << *it << "} from " << "'./" << tmpIncStr << "';" << endl;
+	}
+	rOutStream << endl;
+	mImportClass.clear();
 	return error_ok;
 }
 
