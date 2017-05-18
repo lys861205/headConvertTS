@@ -35,6 +35,8 @@ class Convert
 {
 	typedef map<string, string> TClassTypeVar;
 	typedef map<string, string>::iterator TClassTypeVarIter;
+	typedef map<string, pair<int, int> > TMapStructCmd;
+	typedef map<string, pair<int, int> >::iterator TMapStructCmdIter;
 public:
 	Convert();
 	~Convert();
@@ -57,9 +59,11 @@ private:
 	string getJsFunc(const string& cType, int read);
 	bool addTypeSize(const string& cType, int size);
 	bool getArraySize(string& numStr, int& size);
+	void initStuCmd();
+	bool getStuCmd(const string& stStr, int& cmd, int& cmdtype);
 private:
 	map<string, int> m_macroMap;
-
+	TMapStructCmd m_stCmdMap;
 	map<string, int> m_keyTypeMap;
 	vector<pair<string, int> > m_keyMap;
 	vector<pair<int, string> > m_funMap;	

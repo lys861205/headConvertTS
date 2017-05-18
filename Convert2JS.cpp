@@ -12,6 +12,12 @@
 
 static int enumNumber = 0;
 
+#define BUFMARK 0xA13B
+
+#define BUFCODE1 0x3ABA
+
+#define BUFCODE2 0x413C
+
 #define quotedToken						'#'
 #define comment					        "//"
 #define commentbegin				    "/*"
@@ -46,6 +52,11 @@ static int enumNumber = 0;
 									  if ( super )\
 									  {\
 										  ss << _2TAB << "super()" << endl; \
+										  ss << _2TAB << "this.len=%d" << endl;\
+										  ss << _2TAB << "this.cmd=%d" << endl;\
+									      ss << _2TAB << "this.cmdType=%d" << endl;\
+                                          ss << _2TAB << "this.code=(this.len ^ " << BUFCODE1 << ") & " <<  BUFCODE2 << endl;\
+                                          ss << _2TAB << "this.mark=" << BUFMARK  << endl;\
 									  }\
 									  ss << _2TAB << "if (obj){" << endl;
 
@@ -138,10 +149,17 @@ static int enumNumber = 0;
 									 ss << ss2.rdbuf();\
 									 ss << "}";
 
+#define COMMENT_SS(ss, len, cmd, cmdtype) ss << "/**" << endl;\
+										  ss << "	len=" << len << endl;\
+										  ss << "	cmd=" << cmd << endl;\
+										  ss << "	cmdtype=" << cmdtype << endl;\
+										  ss << "**/" << endl;
+
 						
 
 Convert::Convert()
 {
+	initStuCmd();
 	mIsComment = false;
 	mKeySet.insert("unsigned");
 	mKeySet.insert("char");
@@ -230,6 +248,58 @@ Convert::Convert()
 	mTypeFuncMap.insert(make_pair("CUInt", make_pair("getUInt", "putUInt")));
 	mTypeFuncMap.insert(make_pair("CLong", make_pair("getInt64", "putInt64")));
 	mTypeFuncMap.insert(make_pair("CULong", make_pair("getUInt64", "putUInt64")));
+}
+
+void Convert::initStuCmd()
+{
+	fstream reader("./stuMap.txt", ios::in | ios::out);
+	if (!reader.is_open())
+	{
+		return;
+	}
+	string contentStr;
+	vector<string> vItems;
+	while (getline(reader, contentStr))
+	{
+		if (contentStr.empty())
+		{
+			continue;
+		}
+		size_t pos = contentStr.find("#");
+		if (pos != string::npos)
+		{
+			continue;
+		}
+		contentStr = XStrUtil::chop(contentStr, " \t\n\r");
+		vItems.clear();
+		XStrUtil::split(contentStr, " \t", vItems);
+		if (vItems.size() < 3)
+		{
+			continue;
+		}
+		pair<int, int> tmpPair;
+		int cmd;
+		int cmdtype;
+		XStrUtil::to_number(vItems[1], cmd);
+		XStrUtil::to_number(vItems[2], cmdtype);
+		m_stCmdMap.insert(make_pair(vItems[0], make_pair(cmd, cmdtype)));
+	}
+	reader.close();
+}
+
+bool Convert::getStuCmd(const string& stStr, int& cmd, int& cmdtype)
+{
+	TMapStructCmdIter it = m_stCmdMap.find(stStr);
+	if (it != m_stCmdMap.end())
+	{
+		cmd = it->second.first;
+		cmdtype = it->second.second;
+		return true;
+	}
+	else
+	{
+		return false;
+	}
 }
 
 Convert::~Convert()
@@ -364,6 +434,7 @@ int  Convert::writeClassToJSFile(const string& className, vector<vardef>& rVarVe
 	stringstream ctor1Stream;
 	stringstream ctor2Stream;
 	stringstream toBufStream;
+	stringstream commentStream;
 	string IClassName("I");
 	IClassName.append(className);
 
@@ -428,15 +499,29 @@ int  Convert::writeClassToJSFile(const string& className, vector<vardef>& rVarVe
 			TO_BUFFER_APPEND(toBufStream, (*vIt).nameString, jsFuncString, (*vIt).count)
 		}
 	}
+	int cmd = 0;
+	int type = 0;
+	if (isInherit)
+	{
+		char buf[4094] = { 0 };
+		getStuCmd(className, cmd, type);
+		sprintf(buf, ctor1Stream.str().c_str(), (short)classSize, (char)cmd, (char)type);
+		ctor1Stream.str("");
+		string ctorStr(buf);
+		ctor1Stream << ctorStr;
+		cout << ctor1Stream.str() << endl;
+	}
 	INTERFACE_END(interfaceStream)
 	CTOR_END(ctor1Stream)
 	TO_OBJ_END(ctor2Stream)
 	TO_BUFFER_END(toBufStream)
 	CLASS_END(varStream, ctor1Stream, ctor2Stream, toBufStream)
+	COMMENT_SS(commentStream, classSize, cmd, type)
+	interfaceStream << commentStream.rdbuf();
 	interfaceStream << varStream.rdbuf();
 	interfaceStream << endl;
 
-        rOutStream << interfaceStream.rdbuf();
+    rOutStream << interfaceStream.rdbuf();
 
 	cout << "=======" << className << " size: " << classSize << endl;
 	//add class size
